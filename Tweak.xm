@@ -28,6 +28,10 @@
 @property(copy, nonatomic) NSString *identifier;
 @end
 
+@interface CCTControlCenterButton : SBUIControlCenterButton
+- (NSString *)identifier;
+@end
+
 @interface SBCCQuickLaunchSectionController
 - (NSString *)_bundleIDForButton:(SBControlCenterButton *)button;
 - (void)CCFLLInit;
@@ -52,12 +56,35 @@ static void invalidate()
 	}
 }
 
-%hook CCTogglesAgent
+%hook CCTControlCenterButton
 
-- (void)_setQuickLaunchSection:(SBCCQuickLaunchSectionController *)controller
+- (void)setDelegate:(id)section
 {
 	%orig;
-	[controller CCFLLInit];
+	
+	if ([section isKindOfClass:%c(SBCCQuickLaunchSectionController)] && [self.identifier isEqualToString:@"com.apple.controlcenter.quicklaunch.torch"]) {
+		AVFlashlight *flashlight = MSHookIvar<AVFlashlight *>(section, "_flashlight");
+		// -- do not work in my next version (pending) of CCToggles
+		// Because I will change to UIGestureRecognizer
+		[self addTarget:section action:@selector(FLbuttonTouchDown) forControlEvents:UIControlEventTouchDown];
+		[self addTarget:section action:@selector(FLbuttonCancel) forControlEvents:UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
+		// --
+		[slider release];
+		slider = [[UISlider alloc] init];
+		[slider addTarget:section action:@selector(sliderDidChange:) forControlEvents:UIControlEventValueChanged];
+		[slider addTarget:section action:@selector(touchSlider) forControlEvents:UIControlEventTouchDown];
+		[slider addTarget:section action:@selector(releaseSlider) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel|UIControlEventTouchDragExit];
+		slider.value = flashlight.flashlightLevel;
+		slider.frame = CGRectMake(0, self.frame.size.width/2-5, self.frame.size.width, 12);
+		[placeHolder release];
+		placeHolder = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 60, 60)];
+		placeHolder.backgroundColor = [UIColor clearColor];
+		placeHolder.userInteractionEnabled = NO;
+		[placeHolder addSubview:slider];
+		[self addSubview:placeHolder];
+		slider.alpha = 0;
+		slider.hidden = YES;
+	}
 }
 
 %end
@@ -92,7 +119,9 @@ static void invalidate()
 - (void)viewDidLoad
 {
 	%orig;
-	[self CCFLLInit];
+	
+	if (%c(CCTControlCenterButton) == nil)
+		[self CCFLLInit];
 }
 
 - (void)dealloc
